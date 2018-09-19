@@ -4,7 +4,7 @@ const {username, password} = require('./config.js');
 
 let currentCookies=[];
 
-puppeteer.launch({'headless':false,slowMo:10}).then(async browser => {
+puppeteer.launch({'headless':true,slowMo:250,args: ["--disable-notifications"]}).then(async browser => {
 	if(!fs.existsSync('screenshot')){
 		fs.mkdirSync('screenshot');
 	}
@@ -12,7 +12,7 @@ puppeteer.launch({'headless':false,slowMo:10}).then(async browser => {
 	await restoreCokies(page).then(async ()=>{
 
 		await browser.on('disconnected',()=>{storecookies(page)});
-
+		// page.on('load',()=>{keepcookie(page);});
 		await page.goto('https://www.facebook.com/find-friends/browser');
 		await initialize(page);
 	});
@@ -21,6 +21,8 @@ puppeteer.launch({'headless':false,slowMo:10}).then(async browser => {
 
 
 async function checkLoginPage(page){
+	console.log('Attempting login');
+
 	if(page.url().includes('login.php')){
 		return Promise.resolve(true);
 	}else{
@@ -42,19 +44,23 @@ async function storecookies(page){
 
 
 async function restoreCokies(page){
+	console.log('Restoring Cookie from cookies.txt');
 	return await fs.readFile('cookies.txt',(err,data)=>{
 		if(!err){
 			try{
 				let cookies= JSON.parse(data);
-				console.log(cookies,curcookies);
-				return page.setCookie(...cookies).then(async (data)=>{
-					await page.cookies().then(async (newcookies)=>{ console.log(newcookies);});
-					return Promise.resolve(true);
-				}).catch((err)=>{
-					console.log(err);
-					return Promise.resolve(true);
-				});
+				// console.log(cookies,currentCookies);
+				// return page.setCookie(...cookies).then(async (data)=>{
+				// 	// await page.cookies().then(async (newcookies)=>{ console.log(newcookies);});
+				// 	return Promise.resolve(true);
+
+				// }).catch((err)=>{
+				// 	console.log(err);
+				// 	return Promise.resolve(true);
+				// });
+				return Promise.resolve(true); 
 			}catch(e){
+				console.log(e);
 				return Promise.resolve(true);
 			}
 		}else{
@@ -65,6 +71,7 @@ async function restoreCokies(page){
 
 const attemptLogin= async (page)=> {
 	await page.focus('#email');
+	// await page.reset('#email');
 	await page.keyboard.type(username);
 	await page.focus('#pass');
 	await page.keyboard.type(password);
@@ -72,6 +79,11 @@ const attemptLogin= async (page)=> {
 	return Promise.resolve(true);
 }
 
+async function keepcookie(page){
+	await page.cookies().then((cookies)=>{
+		currentCookies=cookies;
+	});
+}
 
 
 
@@ -79,14 +91,15 @@ async function initialize(page){
 	await page.cookies().then((cookies)=>{
 		currentCookies=cookies;
 	});
-	checkLoginPage(page).then( async (isloginpage)=>{
+	await checkLoginPage(page).then( async (isloginpage)=>{
 		if(isloginpage){
 			return await attemptLogin(page);
 		}else{
 			return true;
 		}
-	}).then((isLoggedin)=>{
-		browseFriendRequest(page);
+	}).then(async(isLoggedin)=>{
+		console.log('Login Succesfull');
+		await browseFriendRequest(page);
 	});
 }
 
@@ -110,14 +123,18 @@ async function browseFriendRequest(page){
 				console.log('couldn\'t find any friend suggestion.');
 				page.browser().close();
 			}
-		}).catch((error)=>{
+		}).catch(async(error)=>{
 			console.log(error);
 			page.browser().close();
 		})
+	}).catch(async(err)=>{
+		await page.goto('https://www.facebook.com/find-friends/browser');
+		await initialize(page);
 	});
 }
 
 async function captureUrl(browser, url,index){
+	console.log('capturing friend #'+index);
 	const page = await browser.newPage();
 	await page.goto(url);
 	await page.screenshot({path:'screenshot/'+index+'.png'});
